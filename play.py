@@ -8,123 +8,87 @@ import tensorflow as tf
 import random
 from collections import deque
 
+class Net(nn.Module):
+    def __init__(self, ):
+        super(Net, self).__init__()
+        # 8 x 8 x 4 with 32 Filters ,Stride 4 -> Output 21 x 21 x 32 -> max_pool 11 x 11 x 32
+        self.conv1=nn.Conv2d(4,32,kernel_size=8,stride=4,padding = 2)
+        self.conv1.weight.data.normal_(0,0.1)
+        self.mp1=nn.MaxPool2d(2,stride=2,padding=1)  #2x2x32 stride=2
+        # 4 x 4 x 32 with 64 Filters ,Stride 2 -> Output 6 x 6 x 64
+        self.conv2=nn.Conv2d(32,64,kernel_size=4,stride=2,padding=2)
+        self.conv2.weight.data.normal_(0,0.1)
+        # 3 x 3 x 64 with 64 Filters,Stride 1 -> Output 6 x 6 x 64
+        self.conv3=nn.Conv2d(64,64,kernel_size=3,stride=1,padding = 1)
+        self.conv3.weight.data.normal_(0,0.1)
+
+        self.fc1=nn.Linear(2304,4)
+        self.fc1.weight.data.normal_(0,0.1)
+    
+    def forward(self,x):
+            
+        x=F.relu(self.conv1(x))
+        x=self.mp1((x))
+        x=F.relu(self.conv2(x))
+        x=F.relu(self.conv3(x))     
+        conv3_to_reshaped=torch.reshape(x,[-1,2304])
+        output=self.fc1(conv3_to_reshaped)
+        return output  #action's value
+
 # Based on NIPS 2013
 class DQN:
-    def __init__(self, DISCFT, FLAG, INIT_EPSILON, FIN_EPSILON, REPLAY_MEMORY, BATCH_SIZE, ACTIONS):
-        # Initialize Variables
-        # epoch - frame
-        # episode - one round
-        self.epoch = 0
-        self.episode = 0
-        self.observe = 500000
-        # discount factor
-        self.discft = DISCFT
-        # FLAG
-        # 0 - train
-        # 1 - play
-        self.flag = FLAG
-        self.epsilon = INIT_EPSILON
-        self.finep = FIN_EPSILON
-        self.REPLAYMEM = REPLAY_MEMORY
-        self.batchsize = BATCH_SIZE
-        self.actions = ACTIONS
-        self.repmem = deque()
-        # Init weight and bias
-        self.w1 = tf.Variable(tf.truncated_normal([8, 8, 4, 32], stddev = 0.01))
-        self.b1 = tf.Variable(tf.constant(0.01, shape = [32]))
 
-        self.w2 = tf.Variable(tf.truncated_normal([4, 4, 32, 64], stddev=0.01))
-        self.b2 = tf.Variable(tf.constant(0.01, shape = [64]))
-
-        self.w3 = tf.Variable(tf.truncated_normal([3, 3, 64, 64], stddev = 0.01))
-        self.b3 = tf.Variable(tf.constant(0.01, shape = [64]))
-
-        self.wfc = tf.Variable(tf.truncated_normal([2304, 512], stddev = 0.01))
-        self.bfc = tf.Variable(tf.constant(0.01, shape = [512]))
-
-        self.wto = tf.Variable(tf.truncated_normal([512, self.actions], stddev = 0.01))
-        self.bto = tf.Variable(tf.constant(0.01, shape = [self.actions]))
-
-        self.initConvNet()
-        self.initNN()
-    
-    def initConvNet(self):
-        # input layer
-        self.input = tf.placeholder("float", [None, 84, 84, 4])
-
-        # Convolutional Neural Network
-        # zero-padding
-        # 84 x 84 x 4
-        # 8 x 8 x 4 with 32 Filters
-        # Stride 4 -> Output 21 x 21 x 32 -> max_pool 11 x 11 x 32
-        tf.nn.conv2d(self.input, self.w1, strides = [1, 4, 4, 1], padding = "SAME")
-        conv1 = tf.nn.relu(tf.nn.conv2d(self.input, self.w1, strides = [1, 4, 4, 1], padding = "SAME") + self.b1)
-        pool = tf.nn.max_pool(conv1, ksize = [1, 2, 2, 1], strides = [1, 2, 2, 1], padding = "SAME")
-
-        # 11 x 11 x 32
-        # 4 x 4 x 32 with 64 Filters
-        # Stride 2 -> Output 6 x 6 x 64
-        conv2 = tf.nn.relu(tf.nn.conv2d(pool, self.w2, strides = [1, 2, 2, 1], padding = "SAME") + self.b2)
-
-        # 6 x 6 x 64
-        # 3 x 3 x 64 with 64 Filters
-        # Stride 1 -> Output 6 x 6 x 64
-        conv3 = tf.nn.relu(tf.nn.conv2d(conv2, self.w3, strides = [1, 1, 1, 1], padding = "SAME") + self.b3)
-
-        # 6 x 6 x 64 = 2304
-        conv3_to_reshaped = tf.reshape(conv3, [-1, 2304])
-
-        # Matrix (1, 2304) * (2304, 512)
-        fullyconnected = tf.nn.relu(tf.matmul(conv3_to_reshaped, self.wfc) + self.bfc)
-
-        # output(Q) layer
-        # Matrix (1, 512) * (512, ACTIONS) -> (1, ACTIONS)
-        self.output = tf.matmul(fullyconnected, self.wto) + self.bto
-
-    def initNN(self):
-        self.a = tf.placeholder("float", [None, self.actions])
-        self.y = tf.placeholder("float", [None]) 
-        out_action = tf.reduce_sum(tf.multiply(self.output, self.a), reduction_indices = 1)
-        self.cost = tf.reduce_mean(tf.square(self.y - out_action))
-        self.optimize = tf.train.AdamOptimizer(1e-6).minimize(self.cost)
+    def __init__(self):
         
-        self.saver = tf.train.Saver()
-        self.session = tf.InteractiveSession()
-        self.session.run(tf.initialize_all_variables())
-        checkpoint = tf.train.get_checkpoint_state("saved")
-        # For fresh start, comment below 2 lines
-        if checkpoint and checkpoint.model_checkpoint_path:
-            self.saver.restore(self.session, checkpoint.model_checkpoint_path)
-    
-    def addReplay(self, s_t1, action, reward, done):
-        tmp = np.append(self.s_t[:,:,1:], s_t1, axis = 2)
-        self.repmem.append((self.s_t, action, reward, tmp, done))
-        if len(self.repmem) > self.REPLAYMEM:
-            self.repmem.popleft()
+        self.memory = deque()     # initialize memory
+        self.eval_net,self.target_net=Net(),Net()
+        self.optimize=torch.optim.Adam(self.eval_net.parameters(),lr=LR)
+        self.loss=nn.MSELoss()
 
-        self.s_t = tmp
-        self.epoch += 1
+        #Net参数初始化
+        self.round = 0  #iteration counter
+        #Hyperparameters
+        self.epoch=0   #memory counter
+        self.observe=10000
+        self.epsilon=1 #INIT_EPSILON
+        self.finep =0.9 # FIN_EPSILON
+        self.actions=4 #ACTIONS
         
-        return self.epoch, np.max(self.qv)
-        
-    def getAction(self):
-        Q_val = self.output.eval(feed_dict={self.input : [self.s_t]})[0]
-        # for print
-        self.qv = Q_val
-        # action array
+    def get_action(self):
+        self.s_t = torch.unsqueeze(torch.FloatTensor(self.s_t), 0)
         action = np.zeros(self.actions)
-        idx = 0
+        if np.random.uniform() < self.epsilon:    #  choose greedy way
+            idx = np.random.randint(0, N_ACTIONS)
+            action[idx]=1
+            #action = action if ENV_A_SHAPE == 0 else action.reshape(ENV_A_SHAPE)
 
-        # epsilon greedily
-        if random.random() <= self.epsilon:
-            idx = random.randrange(self.actions)
-            action[idx] = 1
-        else:
-            idx = np.argmax(Q_val)
-            action[idx] = 1
-
+        else:   # random
+            actions_value = self.eval_net.forward(self.s_t)
+            print(actions_value.shape)
+            action = torch.max(actions_value, 1)[1].data.numpy()
+            
+        # change episilon ——训练期
+        if self.epsilon > self.finep and self.epoch > self.observe:
+            self.epsilon -= (1 - self.finep) / 500000 
         return action
 
+    def store_transition(self,s1,a,r,done):
+        #transition = np.hstack((s, a, r, done))
+        print(self.s_t.shape)
+        print('ok')
+        print(s1.shape)
+        tmp = np.append(self.s_t[1:,:,:], s1, axis = 0)
+        self.memory.append((self.s_t, a, r, tmp, done))
+        # replace the old memory with new memory
+        if len(self.memory) > MEMORY_CAPACITY:
+            self.memory.popleft()
+        if self.epoch > self.observe:
+            self.learn()
+        self.s_t=tmp
+        self.epoch += 1
+
+        return self.epoch   
+    
     def initState(self, state):
         self.s_t = np.stack((state, state, state, state), axis=2)
 

@@ -50,7 +50,6 @@ class Net(nn.Module):
         conv3_to_reshaped=torch.reshape(x,[-1,2304])
         output=self.fc1(conv3_to_reshaped)
         return output  #action's value
-        print(output.shape)
 
 class DQN(object):
 
